@@ -26,6 +26,8 @@ export interface GameState {
   lastChancellorIdx: number | null;
   drawnPolicies: Policy[];
   activeExecutivePower: ExecutivePower;
+  investigationResult: Role | null;
+  truePresidentIdx: number;
   winner: 'Liberals' | 'Fascists' | null;
   logs: string[];
 }
