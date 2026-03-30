@@ -82,6 +82,14 @@ export default function App() {
     setShowSecret(false);
   };
 
+  const getNextAlivePlayerIdx = (currentIdx: number, players: Player[]) => {
+    let nextIdx = (currentIdx + 1) % players.length;
+    while (!players[nextIdx].isAlive) {
+      nextIdx = (nextIdx + 1) % players.length;
+    }
+    return nextIdx;
+  };
+
   const reshuffleIfNeeded = (state: GameState): GameState => {
     if (state.deck.length >= 3) return state;
     const newDeck = shuffle([...state.deck, ...state.discard]);
@@ -111,20 +119,30 @@ export default function App() {
         let currentState = reshuffleIfNeeded(gameState);
         const policy = currentState.deck[0];
         const isLiberal = policy === 'Liberal';
-        setGameState({
-          ...currentState,
-          liberalPolicies: isLiberal ? currentState.liberalPolicies + 1 : currentState.liberalPolicies,
-          fascistPolicies: !isLiberal ? currentState.fascistPolicies + 1 : currentState.fascistPolicies,
-          deck: currentState.deck.slice(1),
-          electionTracker: 0,
-          presidentIdx: (currentState.presidentIdx + 1) % currentState.players.length,
-          logs: [...currentState.logs, `Chaos! Tracker at 3. ${policy} policy enacted.`]
+        
+        setGameState(prev => {
+          if (!prev) return null;
+          const newLib = isLiberal ? prev.liberalPolicies + 1 : prev.liberalPolicies;
+          const newFas = !isLiberal ? prev.fascistPolicies + 1 : prev.fascistPolicies;
+          
+          if (newLib >= 5) return { ...prev, liberalPolicies: newLib, fascistPolicies: newFas, winner: 'Liberals', phase: 'GameOver' };
+          if (newFas >= 6) return { ...prev, liberalPolicies: newLib, fascistPolicies: newFas, winner: 'Fascists', phase: 'GameOver' };
+
+          return {
+            ...prev,
+            liberalPolicies: newLib,
+            fascistPolicies: newFas,
+            deck: prev.deck.slice(1),
+            electionTracker: 0,
+            presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, prev.players),
+            logs: [...prev.logs, `Chaos! Tracker at 3. ${policy} policy enacted.`]
+          };
         });
       } else {
         setGameState(prev => ({
           ...prev!,
           electionTracker: newTracker,
-          presidentIdx: (prev!.presidentIdx + 1) % prev!.players.length,
+          presidentIdx: getNextAlivePlayerIdx(prev!.presidentIdx, prev!.players),
           logs: [...prev!.logs, `Government failed. Tracker at ${newTracker}.`]
         }));
       }
@@ -133,39 +151,47 @@ export default function App() {
 
   const enactPolicy = (policy: Policy) => {
     if (!gameState) return;
-    const isLiberal = policy === 'Liberal';
-    const newLib = isLiberal ? gameState.liberalPolicies + 1 : gameState.liberalPolicies;
-    const newFas = !isLiberal ? gameState.fascistPolicies + 1 : gameState.fascistPolicies;
     
-    // The Chancellor enacts one, the other one from drawnPolicies is discarded
-    const discarded = gameState.drawnPolicies.find(p => p !== policy) || gameState.drawnPolicies[0];
-    const newDiscard = [...gameState.discard, discarded];
+    setGameState(prev => {
+      if (!prev) return null;
+      
+      const isLiberal = policy === 'Liberal';
+      const newLib = isLiberal ? prev.liberalPolicies + 1 : prev.liberalPolicies;
+      const newFas = !isLiberal ? prev.fascistPolicies + 1 : prev.fascistPolicies;
 
-    let nextPhase: GamePhase = 'Election';
-    let power: ExecutivePower = 'None';
+      // Check win conditions
+      if (newLib >= 5) return { ...prev, liberalPolicies: newLib, fascistPolicies: newFas, winner: 'Liberals', phase: 'GameOver' };
+      if (newFas >= 6) return { ...prev, liberalPolicies: newLib, fascistPolicies: newFas, winner: 'Fascists', phase: 'GameOver' };
 
-    if (!isLiberal) {
-      const powerName = FASCIST_POWERS[gameState.players.length][newFas];
-      if (powerName) {
-        nextPhase = 'ExecutiveAction';
-        power = powerName as ExecutivePower;
+      const discarded = prev.drawnPolicies.find(p => p !== policy) || prev.drawnPolicies[0];
+      const newDiscard = [...prev.discard, discarded];
+
+      let nextPhase: GamePhase = 'Election';
+      let power: ExecutivePower = 'None';
+      let nextPresidentIdx = getNextAlivePlayerIdx(prev.presidentIdx, prev.players);
+
+      if (!isLiberal) {
+        const powerName = FASCIST_POWERS[prev.players.length][newFas];
+        if (powerName) {
+          nextPhase = 'ExecutiveAction';
+          power = powerName as ExecutivePower;
+          // Don't increment presidentIdx yet, current president needs to act
+          nextPresidentIdx = prev.presidentIdx;
+        }
       }
-    }
 
-    setGameState(prev => ({
-      ...prev!,
-      liberalPolicies: newLib,
-      fascistPolicies: newFas,
-      discard: newDiscard,
-      phase: nextPhase,
-      activeExecutivePower: power,
-      presidentIdx: power === 'SpecialElection' ? prev!.presidentIdx : (prev!.presidentIdx + 1) % prev!.players.length,
-      drawnPolicies: [],
-      logs: [...prev!.logs, `${policy} policy enacted.`]
-    }));
-
-    if (newLib >= 5) setGameState(prev => ({ ...prev!, winner: 'Liberals', phase: 'GameOver' }));
-    if (newFas >= 6) setGameState(prev => ({ ...prev!, winner: 'Fascists', phase: 'GameOver' }));
+      return {
+        ...prev,
+        liberalPolicies: newLib,
+        fascistPolicies: newFas,
+        discard: newDiscard,
+        phase: nextPhase,
+        activeExecutivePower: power,
+        presidentIdx: nextPresidentIdx,
+        drawnPolicies: [],
+        logs: [...prev.logs, `${policy} policy enacted.`]
+      };
+    });
   };
 
   const handleAction = (targetIdx: number) => {
@@ -184,7 +210,7 @@ export default function App() {
           players: newPlayers,
           phase: 'Election',
           activeExecutivePower: 'None',
-          presidentIdx: (prev!.presidentIdx + 1) % prev!.players.length
+          presidentIdx: getNextAlivePlayerIdx(prev!.presidentIdx, prev!.players)
         }));
       }
     } else if (power === 'Investigate') {
@@ -523,7 +549,7 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => setGameState({ ...gameState, phase: 'Election', activeExecutivePower: 'None', presidentIdx: (gameState.presidentIdx + 1) % gameState.players.length })} className="w-full py-4 bg-white text-bg-dark rounded-2xl font-serif font-bold uppercase tracking-widest">
+                  <button onClick={() => setGameState({ ...gameState, phase: 'Election', activeExecutivePower: 'None', presidentIdx: getNextAlivePlayerIdx(gameState.presidentIdx, gameState.players) })} className="w-full py-4 bg-white text-bg-dark rounded-2xl font-serif font-bold uppercase tracking-widest">
                     Done
                   </button>
                 </div>
@@ -531,7 +557,7 @@ export default function App() {
                 <div className="text-center p-10 rounded-3xl bg-card-dark border border-white/10">
                   <p className="text-xs uppercase tracking-widest text-text-muted mb-4">Investigation Result</p>
                   <h3 className={`text-5xl font-serif ${investigationResult === 'Liberal' ? 'text-liberal-blue' : 'text-hitler-red'}`}>{investigationResult}</h3>
-                  <button onClick={() => { setInvestigationResult(null); setGameState({ ...gameState, phase: 'Election', activeExecutivePower: 'None', presidentIdx: (gameState.presidentIdx + 1) % gameState.players.length }); }} className="mt-10 w-full py-3 border border-white/20 rounded-xl text-sm uppercase tracking-widest">
+                  <button onClick={() => { setInvestigationResult(null); setGameState({ ...gameState, phase: 'Election', activeExecutivePower: 'None', presidentIdx: getNextAlivePlayerIdx(gameState.presidentIdx, gameState.players) }); }} className="mt-10 w-full py-3 border border-white/20 rounded-xl text-sm uppercase tracking-widest">
                     Continue
                   </button>
                 </div>
