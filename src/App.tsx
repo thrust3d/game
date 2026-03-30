@@ -195,34 +195,43 @@ export default function App() {
   };
 
   const handleAction = (targetIdx: number) => {
-    if (!gameState) return;
-    const power = gameState.activeExecutivePower;
-    const target = gameState.players[targetIdx];
+    setGameState(prev => {
+      if (!prev) return null;
+      const power = prev.activeExecutivePower;
+      const target = prev.players[targetIdx];
 
-    if (power === 'Execution') {
-      if (target.role === 'Hitler') {
-        setGameState(prev => ({ ...prev!, winner: 'Liberals', phase: 'GameOver' }));
-      } else {
-        const newPlayers = [...gameState.players];
-        newPlayers[targetIdx].isAlive = false;
-        setGameState(prev => ({
-          ...prev!,
-          players: newPlayers,
+      if (power === 'Execution') {
+        if (target.role === 'Hitler') {
+          return { ...prev, winner: 'Liberals', phase: 'GameOver' };
+        } else {
+          const newPlayers = [...prev.players];
+          newPlayers[targetIdx].isAlive = false;
+          return {
+            ...prev,
+            players: newPlayers,
+            phase: 'Election',
+            activeExecutivePower: 'None',
+            presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, newPlayers),
+            logs: [...prev.logs, `${target.name} was executed.`]
+          };
+        }
+      } else if (power === 'Investigate') {
+        setInvestigationResult(target.role === 'Liberal' ? 'Liberal' : 'Fascist');
+        return {
+          ...prev,
+          logs: [...prev.logs, `President investigated ${target.name}.`]
+        };
+      } else if (power === 'SpecialElection') {
+        return {
+          ...prev,
+          presidentIdx: targetIdx,
           phase: 'Election',
           activeExecutivePower: 'None',
-          presidentIdx: getNextAlivePlayerIdx(prev!.presidentIdx, prev!.players)
-        }));
+          logs: [...prev.logs, `Special Election! ${target.name} is the new President.`]
+        };
       }
-    } else if (power === 'Investigate') {
-      setInvestigationResult(target.role === 'Liberal' ? 'Liberal' : 'Fascist');
-    } else if (power === 'SpecialElection') {
-      setGameState(prev => ({
-        ...prev!,
-        presidentIdx: targetIdx,
-        phase: 'Election',
-        activeExecutivePower: 'None'
-      }));
-    }
+      return prev;
+    });
   };
 
   // --- UI Components ---
@@ -549,7 +558,15 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={() => setGameState({ ...gameState, phase: 'Election', activeExecutivePower: 'None', presidentIdx: getNextAlivePlayerIdx(gameState.presidentIdx, gameState.players) })} className="w-full py-4 bg-white text-bg-dark rounded-2xl font-serif font-bold uppercase tracking-widest">
+                  <button 
+                    onClick={() => setGameState(prev => prev ? ({ 
+                      ...prev, 
+                      phase: 'Election', 
+                      activeExecutivePower: 'None', 
+                      presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, prev.players) 
+                    }) : null)} 
+                    className="w-full py-4 bg-white text-bg-dark rounded-2xl font-serif font-bold uppercase tracking-widest"
+                  >
                     Done
                   </button>
                 </div>
@@ -557,7 +574,18 @@ export default function App() {
                 <div className="text-center p-10 rounded-3xl bg-card-dark border border-white/10">
                   <p className="text-xs uppercase tracking-widest text-text-muted mb-4">Investigation Result</p>
                   <h3 className={`text-5xl font-serif ${investigationResult === 'Liberal' ? 'text-liberal-blue' : 'text-hitler-red'}`}>{investigationResult}</h3>
-                  <button onClick={() => { setInvestigationResult(null); setGameState({ ...gameState, phase: 'Election', activeExecutivePower: 'None', presidentIdx: getNextAlivePlayerIdx(gameState.presidentIdx, gameState.players) }); }} className="mt-10 w-full py-3 border border-white/20 rounded-xl text-sm uppercase tracking-widest">
+                  <button 
+                    onClick={() => { 
+                      setInvestigationResult(null); 
+                      setGameState(prev => prev ? ({ 
+                        ...prev, 
+                        phase: 'Election', 
+                        activeExecutivePower: 'None', 
+                        presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, prev.players) 
+                      }) : null); 
+                    }} 
+                    className="mt-10 w-full py-3 border border-white/20 rounded-xl text-sm uppercase tracking-widest"
+                  >
                     Continue
                   </button>
                 </div>
