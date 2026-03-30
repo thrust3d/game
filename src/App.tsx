@@ -82,31 +82,44 @@ export default function App() {
     setShowSecret(false);
   };
 
+  const reshuffleIfNeeded = (state: GameState): GameState => {
+    if (state.deck.length >= 3) return state;
+    const newDeck = shuffle([...state.deck, ...state.discard]);
+    return {
+      ...state,
+      deck: newDeck,
+      discard: [],
+      logs: [...state.logs, 'Deck reshuffled.']
+    };
+  };
+
   const handleGovResult = (passed: boolean) => {
     if (!gameState) return;
     if (passed) {
-      setGameState(prev => ({
-        ...prev!,
+      const stateWithReshuffle = reshuffleIfNeeded(gameState);
+      setGameState({
+        ...stateWithReshuffle,
         phase: 'Legislative',
-        drawnPolicies: prev!.deck.slice(0, 3),
-        deck: prev!.deck.slice(3),
+        drawnPolicies: stateWithReshuffle.deck.slice(0, 3),
+        deck: stateWithReshuffle.deck.slice(3),
         electionTracker: 0,
-        logs: [...prev!.logs, `Government passed for President ${prev!.players[prev!.presidentIdx].name}.`]
-      }));
+        logs: [...stateWithReshuffle.logs, `Government passed for President ${stateWithReshuffle.players[stateWithReshuffle.presidentIdx].name}.`]
+      });
     } else {
       const newTracker = gameState.electionTracker + 1;
       if (newTracker === 3) {
-        const policy = gameState.deck[0];
+        let currentState = reshuffleIfNeeded(gameState);
+        const policy = currentState.deck[0];
         const isLiberal = policy === 'Liberal';
-        setGameState(prev => ({
-          ...prev!,
-          liberalPolicies: isLiberal ? prev!.liberalPolicies + 1 : prev!.liberalPolicies,
-          fascistPolicies: !isLiberal ? prev!.fascistPolicies + 1 : prev!.fascistPolicies,
-          deck: prev!.deck.slice(1),
+        setGameState({
+          ...currentState,
+          liberalPolicies: isLiberal ? currentState.liberalPolicies + 1 : currentState.liberalPolicies,
+          fascistPolicies: !isLiberal ? currentState.fascistPolicies + 1 : currentState.fascistPolicies,
+          deck: currentState.deck.slice(1),
           electionTracker: 0,
-          presidentIdx: (prev!.presidentIdx + 1) % prev!.players.length,
-          logs: [...prev!.logs, `Chaos! Tracker at 3. ${policy} policy enacted.`]
-        }));
+          presidentIdx: (currentState.presidentIdx + 1) % currentState.players.length,
+          logs: [...currentState.logs, `Chaos! Tracker at 3. ${policy} policy enacted.`]
+        });
       } else {
         setGameState(prev => ({
           ...prev!,
@@ -124,6 +137,10 @@ export default function App() {
     const newLib = isLiberal ? gameState.liberalPolicies + 1 : gameState.liberalPolicies;
     const newFas = !isLiberal ? gameState.fascistPolicies + 1 : gameState.fascistPolicies;
     
+    // The Chancellor enacts one, the other one from drawnPolicies is discarded
+    const discarded = gameState.drawnPolicies.find(p => p !== policy) || gameState.drawnPolicies[0];
+    const newDiscard = [...gameState.discard, discarded];
+
     let nextPhase: GamePhase = 'Election';
     let power: ExecutivePower = 'None';
 
@@ -139,6 +156,7 @@ export default function App() {
       ...prev!,
       liberalPolicies: newLib,
       fascistPolicies: newFas,
+      discard: newDiscard,
       phase: nextPhase,
       activeExecutivePower: power,
       presidentIdx: power === 'SpecialElection' ? prev!.presidentIdx : (prev!.presidentIdx + 1) % prev!.players.length,
@@ -469,8 +487,12 @@ export default function App() {
                     onClick={() => {
                       if (gameState.drawnPolicies.length === 3) {
                         const next = [...gameState.drawnPolicies];
-                        next.splice(i, 1);
-                        setGameState({ ...gameState, drawnPolicies: next });
+                        const discarded = next.splice(i, 1)[0];
+                        setGameState({ 
+                          ...gameState, 
+                          drawnPolicies: next,
+                          discard: [...gameState.discard, discarded]
+                        });
                       } else {
                         enactPolicy(p);
                       }
