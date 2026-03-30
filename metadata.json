@@ -1,0 +1,5 @@
+{
+  "name": "Secret Hitler: Digital Edition",
+  "description": "A sleek, intuitive local multiplayer implementation of the social deduction game Secret Hitler. Play with 5-10 friends on a single device.",
+  "requestFramePermissions": []
+}
