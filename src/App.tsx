@@ -39,7 +39,6 @@ export default function App() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [revealIdx, setRevealIdx] = useState(0);
   const [showSecret, setShowSecret] = useState(false);
-  const [investigationResult, setInvestigationResult] = useState<Role | null>(null);
   const [showCredits, setShowCredits] = useState(false);
 
   const initGame = () => {
@@ -75,6 +74,8 @@ export default function App() {
       lastChancellorIdx: null,
       drawnPolicies: [],
       activeExecutivePower: 'None',
+      investigationResult: null,
+      truePresidentIdx: 0,
       winner: null,
       logs: ['Game started.']
     });
@@ -104,14 +105,21 @@ export default function App() {
   const handleGovResult = (passed: boolean) => {
     if (!gameState) return;
     if (passed) {
+      // Hitler win condition
+      if (gameState.fascistPolicies >= 3 && gameState.players[gameState.nominatedChancellorIdx!].role === 'Hitler') {
+        setGameState({ ...gameState, winner: 'Fascists', phase: 'GameOver' });
+        return;
+      }
+
       const stateWithReshuffle = reshuffleIfNeeded(gameState);
       setGameState({
         ...stateWithReshuffle,
         phase: 'Legislative',
+        chancellorIdx: gameState.nominatedChancellorIdx,
         drawnPolicies: stateWithReshuffle.deck.slice(0, 3),
         deck: stateWithReshuffle.deck.slice(3),
         electionTracker: 0,
-        logs: [...stateWithReshuffle.logs, `Government passed for President ${stateWithReshuffle.players[stateWithReshuffle.presidentIdx].name}.`]
+        logs: [...stateWithReshuffle.logs, `Government passed for President ${stateWithReshuffle.players[stateWithReshuffle.presidentIdx].name} and Chancellor ${stateWithReshuffle.players[stateWithReshuffle.nominatedChancellorIdx!].name}.`]
       });
     } else {
       const newTracker = gameState.electionTracker + 1;
@@ -128,23 +136,42 @@ export default function App() {
           if (newLib >= 5) return { ...prev, liberalPolicies: newLib, fascistPolicies: newFas, winner: 'Liberals', phase: 'GameOver' };
           if (newFas >= 6) return { ...prev, liberalPolicies: newLib, fascistPolicies: newFas, winner: 'Fascists', phase: 'GameOver' };
 
+          const nextTruePresidentIdx = prev.presidentIdx === prev.truePresidentIdx 
+            ? getNextAlivePlayerIdx(prev.truePresidentIdx, prev.players)
+            : prev.truePresidentIdx;
+
           return {
             ...prev,
             liberalPolicies: newLib,
             fascistPolicies: newFas,
             deck: prev.deck.slice(1),
             electionTracker: 0,
-            presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, prev.players),
-            logs: [...prev.logs, `Chaos! Tracker at 3. ${policy} policy enacted.`]
+            presidentIdx: nextTruePresidentIdx,
+            truePresidentIdx: nextTruePresidentIdx,
+            nominatedChancellorIdx: null,
+            chancellorIdx: null,
+            lastPresidentIdx: null,
+            lastChancellorIdx: null,
+            logs: [...prev.logs, `Chaos! Tracker at 3. ${policy} policy enacted. Tracker reset.`]
           };
         });
       } else {
-        setGameState(prev => ({
-          ...prev!,
-          electionTracker: newTracker,
-          presidentIdx: getNextAlivePlayerIdx(prev!.presidentIdx, prev!.players),
-          logs: [...prev!.logs, `Government failed. Tracker at ${newTracker}.`]
-        }));
+        setGameState(prev => {
+          if (!prev) return null;
+          const nextTruePresidentIdx = prev.presidentIdx === prev.truePresidentIdx 
+            ? getNextAlivePlayerIdx(prev.truePresidentIdx, prev.players)
+            : prev.truePresidentIdx;
+
+          return {
+            ...prev,
+            electionTracker: newTracker,
+            presidentIdx: nextTruePresidentIdx,
+            truePresidentIdx: nextTruePresidentIdx,
+            nominatedChancellorIdx: null,
+            chancellorIdx: null,
+            logs: [...prev.logs, `Government failed. Tracker at ${newTracker}.`]
+          };
+        });
       }
     }
   };
@@ -168,14 +195,20 @@ export default function App() {
 
       let nextPhase: GamePhase = 'Election';
       let power: ExecutivePower = 'None';
-      let nextPresidentIdx = getNextAlivePlayerIdx(prev.presidentIdx, prev.players);
+      
+      // If it was a normal turn, advance the rotation. If special, return to rotation.
+      const nextTruePresidentIdx = prev.presidentIdx === prev.truePresidentIdx 
+        ? getNextAlivePlayerIdx(prev.truePresidentIdx, prev.players)
+        : prev.truePresidentIdx;
+      
+      let nextPresidentIdx = nextTruePresidentIdx;
 
       if (!isLiberal) {
         const powerName = FASCIST_POWERS[prev.players.length][newFas];
         if (powerName) {
           nextPhase = 'ExecutiveAction';
           power = powerName as ExecutivePower;
-          // Don't increment presidentIdx yet, current president needs to act
+          // Current president stays active to perform the power
           nextPresidentIdx = prev.presidentIdx;
         }
       }
@@ -188,6 +221,9 @@ export default function App() {
         phase: nextPhase,
         activeExecutivePower: power,
         presidentIdx: nextPresidentIdx,
+        truePresidentIdx: nextTruePresidentIdx,
+        lastPresidentIdx: prev.presidentIdx,
+        lastChancellorIdx: prev.nominatedChancellorIdx,
         drawnPolicies: [],
         logs: [...prev.logs, `${policy} policy enacted.`]
       };
@@ -211,14 +247,14 @@ export default function App() {
             players: newPlayers,
             phase: 'Election',
             activeExecutivePower: 'None',
-            presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, newPlayers),
+            presidentIdx: prev.truePresidentIdx,
             logs: [...prev.logs, `${target.name} was executed.`]
           };
         }
       } else if (power === 'Investigate') {
-        setInvestigationResult(target.role === 'Liberal' ? 'Liberal' : 'Fascist');
         return {
           ...prev,
+          investigationResult: target.role === 'Liberal' ? 'Liberal' : 'Fascist',
           logs: [...prev.logs, `President investigated ${target.name}.`]
         };
       } else if (power === 'SpecialElection') {
@@ -478,26 +514,59 @@ export default function App() {
           {gameState?.phase === 'Election' && (
             <motion.div key="election" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm text-center">
               <div className="mb-8">
-                <p className="text-text-muted uppercase tracking-[0.3em] text-[10px] mb-2">Current President</p>
-                <h2 className="text-5xl font-serif">{gameState.players[gameState.presidentIdx].name}</h2>
+                <p className="text-text-muted uppercase tracking-[0.3em] text-[10px] mb-2">
+                  {gameState.nominatedChancellorIdx === null ? 'President' : 'Proposed Government'}
+                </p>
+                <h2 className="text-4xl font-serif">
+                  {gameState.nominatedChancellorIdx === null 
+                    ? gameState.players[gameState.presidentIdx].name 
+                    : `${gameState.players[gameState.presidentIdx].name} & ${gameState.players[gameState.nominatedChancellorIdx].name}`}
+                </h2>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 w-full">
-                <button 
-                  onClick={() => handleGovResult(true)}
-                  className="bg-white text-bg-dark py-6 rounded-3xl flex flex-col items-center gap-2 hover:bg-opacity-90 active:scale-95 transition-all"
-                >
-                  <CheckCircle2 size={32} />
-                  <span className="font-serif font-bold uppercase tracking-widest">Passed</span>
-                </button>
-                <button 
-                  onClick={() => handleGovResult(false)}
-                  className="bg-card-dark border border-white/10 py-6 rounded-3xl flex flex-col items-center gap-2 hover:bg-white/5 active:scale-95 transition-all"
-                >
-                  <XCircle size={32} />
-                  <span className="font-serif font-bold uppercase tracking-widest">Failed</span>
-                </button>
-              </div>
+              {gameState.nominatedChancellorIdx === null ? (
+                <div className="space-y-4">
+                  <p className="text-text-muted text-xs uppercase tracking-widest">Nominate a Chancellor</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {gameState.players.map((p, i) => {
+                      const isSelf = i === gameState.presidentIdx;
+                      const isLastPresident = i === gameState.lastPresidentIdx && gameState.players.length > 5;
+                      const isLastChancellor = i === gameState.lastChancellorIdx;
+                      const isDisabled = !p.isAlive || isSelf || isLastPresident || isLastChancellor;
+                      
+                      return (
+                        <button
+                          key={p.id}
+                          disabled={isDisabled}
+                          onClick={() => setGameState({ ...gameState, nominatedChancellorIdx: i })}
+                          className={`p-4 rounded-2xl border border-white/10 text-sm font-serif transition-all ${!isDisabled ? 'bg-card-dark hover:bg-white hover:text-bg-dark' : 'opacity-20'}`}
+                        >
+                          {p.name}
+                          {isLastPresident && <span className="block text-[8px] opacity-40">Last President</span>}
+                          {isLastChancellor && <span className="block text-[8px] opacity-40">Last Chancellor</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 w-full">
+                  <button 
+                    onClick={() => handleGovResult(true)}
+                    className="bg-white text-bg-dark py-6 rounded-3xl flex flex-col items-center gap-2 hover:bg-opacity-90 active:scale-95 transition-all"
+                  >
+                    <CheckCircle2 size={32} />
+                    <span className="font-serif font-bold uppercase tracking-widest">Passed</span>
+                  </button>
+                  <button 
+                    onClick={() => handleGovResult(false)}
+                    className="bg-card-dark border border-white/10 py-6 rounded-3xl flex flex-col items-center gap-2 hover:bg-white/5 active:scale-95 transition-all"
+                  >
+                    <XCircle size={32} />
+                    <span className="font-serif font-bold uppercase tracking-widest">Failed</span>
+                  </button>
+                </div>
+              )}
 
               <div className="mt-12 flex justify-center gap-3">
                 {[0, 1, 2].map(i => (
@@ -563,25 +632,25 @@ export default function App() {
                       ...prev, 
                       phase: 'Election', 
                       activeExecutivePower: 'None', 
-                      presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, prev.players) 
+                      presidentIdx: prev.truePresidentIdx 
                     }) : null)} 
                     className="w-full py-4 bg-white text-bg-dark rounded-2xl font-serif font-bold uppercase tracking-widest"
                   >
                     Done
                   </button>
                 </div>
-              ) : investigationResult ? (
+              ) : gameState.investigationResult ? (
                 <div className="text-center p-10 rounded-3xl bg-card-dark border border-white/10">
                   <p className="text-xs uppercase tracking-widest text-text-muted mb-4">Investigation Result</p>
-                  <h3 className={`text-5xl font-serif ${investigationResult === 'Liberal' ? 'text-liberal-blue' : 'text-hitler-red'}`}>{investigationResult}</h3>
+                  <h3 className={`text-5xl font-serif ${gameState.investigationResult === 'Liberal' ? 'text-liberal-blue' : 'text-hitler-red'}`}>{gameState.investigationResult}</h3>
                   <button 
                     onClick={() => { 
-                      setInvestigationResult(null); 
                       setGameState(prev => prev ? ({ 
                         ...prev, 
                         phase: 'Election', 
                         activeExecutivePower: 'None', 
-                        presidentIdx: getNextAlivePlayerIdx(prev.presidentIdx, prev.players) 
+                        investigationResult: null,
+                        presidentIdx: prev.truePresidentIdx 
                       }) : null); 
                     }} 
                     className="mt-10 w-full py-3 border border-white/20 rounded-xl text-sm uppercase tracking-widest"
