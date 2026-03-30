@@ -185,7 +185,7 @@ export default function App() {
 
   if (!numPlayers) {
     return (
-      <div className="h-screen flex flex-col items-center justify-center p-8 bg-bg-dark relative">
+      <div className="h-[100dvh] flex flex-col items-center justify-center p-8 bg-bg-dark relative">
         <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center">
           <h1 className="text-5xl font-serif mb-2 tracking-tighter uppercase text-white">SECRET HITLER</h1>
           <p className="text-text-muted mb-12 text-sm uppercase tracking-widest">Digital Companion</p>
@@ -276,8 +276,8 @@ export default function App() {
 
   if (numPlayers && !gameState) {
     return (
-      <div className="h-screen flex flex-col bg-bg-dark p-8 overflow-y-auto custom-scrollbar">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-sm mx-auto w-full">
+      <div className="h-[100dvh] flex flex-col bg-bg-dark p-8 overflow-y-auto custom-scrollbar">
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-sm mx-auto w-full pb-20">
           <button onClick={() => setNumPlayers(null)} className="text-text-muted text-xs uppercase tracking-widest mb-8 flex items-center gap-2">
             <RotateCcw size={14} /> Back
           </button>
@@ -318,7 +318,7 @@ export default function App() {
     const p = gameState.players[revealIdx];
     const isLast = revealIdx === gameState.players.length - 1;
     return (
-      <div className="h-screen flex flex-col items-center justify-center p-8 bg-bg-dark">
+      <div className="h-[100dvh] flex flex-col items-center justify-center p-8 bg-bg-dark">
         <AnimatePresence mode="wait">
           {!showSecret ? (
             <motion.div key="pass" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-center">
@@ -369,7 +369,7 @@ export default function App() {
 
   if (gameState?.phase === 'GameOver') {
     return (
-      <div className={`h-screen flex flex-col items-center justify-center p-8 ${gameState.winner === 'Liberals' ? 'bg-liberal-blue' : 'bg-hitler-red'}`}>
+      <div className={`h-[100dvh] flex flex-col items-center justify-center p-8 ${gameState.winner === 'Liberals' ? 'bg-liberal-blue' : 'bg-hitler-red'}`}>
         <h1 className="text-7xl font-serif mb-4 uppercase tracking-tighter">{gameState.winner} WIN</h1>
         <button onClick={() => setNumPlayers(null)} className="mt-12 px-8 py-4 bg-white text-bg-dark rounded-full font-serif font-bold uppercase tracking-widest">
           Play Again
@@ -379,7 +379,7 @@ export default function App() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-bg-dark overflow-hidden">
+    <div className="h-[100dvh] flex flex-col bg-bg-dark overflow-hidden">
       {/* Policy Boards - Visual Focus */}
       <div className="p-6 space-y-6">
         <div className="space-y-2">
